@@ -27,7 +27,7 @@ class VAE(nn.Module):
     def __init__(self):
         super(VAE, self).__init__()
 
-        self.input_layer = nn.Linear(56, 256)
+        self.input_layer = nn.Linear(28 + 28, 256) # one frame/pose contains 28 pieces of data; 2 poses are input in one pass 
         self.encoder_layer_1 = nn.Linear(256, 256)
         self.encoder_layer_2 = nn.Linear(256, 256)
         self.encoder_layer_3 = nn.Linear(256, 256)
