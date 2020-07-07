@@ -7,6 +7,8 @@ from torch.nn import functional as F
 from torchvision import datasets, transforms
 from torchvision.utils import save_image
 
+from MVAE import MVAE
+
 torch.manual_seed(0)
 batch_size = 64
 log_interval = 10
@@ -22,43 +24,7 @@ test_loader = torch.utils.data.DataLoader(
     datasets.MNIST('../data', train=False, transform=transforms.ToTensor()),
     batch_size=batch_size, shuffle=True, **kwargs)
 
-
-class VAE(nn.Module):
-    def __init__(self):
-        super(VAE, self).__init__()
-
-        self.input_layer = nn.Linear(28 + 28, 256) # one frame/pose contains 28 pieces of data; 2 poses are input in one pass 
-        self.encoder_layer_1 = nn.Linear(256, 256)
-        self.encoder_layer_2 = nn.Linear(256, 256)
-        self.encoder_layer_3 = nn.Linear(256, 256)
-        self.fc21 = nn.Linear(256, 32)
-        self.fc22 = nn.Linear(256, 32)
-        self.fc3 = nn.Linear(20, 400)
-        self.fc4 = nn.Linear(400, 784)
-
-    def encode(self, x):
-        h1 = F.elu(self.input_layer(x))
-        h2 = F.elu(self.encoder_layer_1(h1))
-        h3 = F.elu(self.encoder_layer_2(h2))
-        h4 = F.elu(self.encoder_layer_3(h3))
-        return self.fc21(h4), self.fc22(h4)
-
-    def reparameterize(self, mu, logvar):
-        std = torch.exp(0.5*logvar)
-        eps = torch.randn_like(std)
-        return mu + eps*std
-
-    def decode(self, z):
-        h3 = F.relu(self.fc3(z))
-        return torch.sigmoid(self.fc4(h3))
-
-    def forward(self, x):
-        mu, logvar = self.encode(x.view(-1, 784))
-        z = self.reparameterize(mu, logvar)
-        return self.decode(z), mu, logvar
-
-
-model = VAE().to(device)
+model = MVAE().to(device)
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
 
