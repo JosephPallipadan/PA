@@ -229,7 +229,7 @@ class Viewer:
 
 
 if __name__ == '__main__':
-  asf_path = '02.asf'
+  asf_path = '07.asf'
   amc_path = '02_01.amc'
   joints = parse_asf(asf_path)
   motions = parse_amc(amc_path)

@@ -7,10 +7,10 @@ class Expert(nn.Module):
     def __init__(self):
         super(Expert, self).__init__()
 
-        self.input_layer = nn.Linear(32 + 28, 256) # z is of size 32
+        self.input_layer = nn.Linear(32 + 62, 256) # z is of size 32
         self.layer_1 = nn.Linear(32 + 256, 256)
         self.layer_2 = nn.Linear(32 + 256, 256)
-        self.layer_3 = nn.Linear(32 + 256, 28)
+        self.layer_3 = nn.Linear(32 + 256, 62)
 
     def forward(self, z, prev_pose):
         inp = torch.cat((z, prev_pose), 0)
@@ -26,7 +26,7 @@ class GatingNetwork(nn.Module):
     def __init__(self):
         super(GatingNetwork, self).__init__()
 
-        self.input_layer = nn.Linear(32 + 28, 256)
+        self.input_layer = nn.Linear(32 + 62, 256)
         self.layer_1 = nn.Linear(256, 256)
         self.layer_2 = nn.Linear(256, 256)
         self.layer_3 = nn.Linear(256, 6)
@@ -45,8 +45,8 @@ class MVAE(nn.Module):
     def __init__(self):
         super(MVAE, self).__init__()
 
-        # one frame/pose contains 28 pieces of data; 2 poses are input in one pass
-        self.input_layer = nn.Linear(28 + 28, 256)
+        # one frame/pose contains 62 pieces of data; 2 poses are input in one pass
+        self.input_layer = nn.Linear(62 + 62, 256)
         self.encoder_layer_1 = nn.Linear(256, 256)
         self.encoder_layer_2 = nn.Linear(256, 256)
         self.encoder_layer_3_mean = nn.Linear(256, 32)
