@@ -268,5 +268,5 @@ def test_all():
 #   # joints['root'].set_motion(motions[frame_idx])
 #   # joints['root'].draw()
 
-motions = parse_amc('02_01.amc')
-pprint(motions[0])
+# motions = parse_amc('02_01.amc')
+# pprint(motions[1], indent=4)

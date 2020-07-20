@@ -1,36 +1,82 @@
-from __future__ import print_function
-import argparse
+from os import listdir
+
 import torch
 import torch.utils.data
+
 from torch import nn, optim
 from torch.nn import functional as F
-from torchvision import datasets, transforms
-from torchvision.utils import save_image
+
+from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
+from torch import sqrt
 
 from MVAE import MVAE
+from amc_parser import parse_amc
+
+from pprint import pprint
+from logger import logger
+import matplotlib.pyplot as plt
 
 torch.manual_seed(0)
 batch_size = 64
 log_interval = 10
 epochs = 24
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda")
 
-kwargs = {'num_workers': 1, 'pin_memory': True} if torch.cuda.is_available() else {}
-train_loader = torch.utils.data.DataLoader(
-    datasets.MNIST('../data', train=True, download=True,
-                   transform=transforms.ToTensor()),
-    batch_size=batch_size, shuffle=True, **kwargs)
-test_loader = torch.utils.data.DataLoader(
-    datasets.MNIST('../data', train=False, transform=transforms.ToTensor()),
-    batch_size=batch_size, shuffle=True, **kwargs)
 
-model = MVAE().to(device)
-optimizer = optim.Adam(model.parameters(), lr=1e-3)
+class MotionFramesDataset(Dataset):
+    def __init__(self, subject_count, max_files_per_subject):
+        all_subject_motions = self.get_motion_lists(subject_count, max_files_per_subject)
+        self.samples = []
+
+        for subject_motion_list in all_subject_motions:
+            for frame_list in subject_motion_list:
+                for i in range(1, len(frame_list)):
+
+                    previous_frame, current_frame = frame_list[i - 1], frame_list[i]
+                    current_frame_feature_list, next_frame_feature_list = [], []
+
+                    for current_frame_feature, next_frame_feature in zip(previous_frame.values(), current_frame.values()):
+                        current_frame_feature_list += current_frame_feature
+                        next_frame_feature_list += next_frame_feature
+
+                    self.samples.append((torch.Tensor(current_frame_feature_list), torch.Tensor(next_frame_feature_list)))
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        return self.samples[idx]
+
+    def get_motion_lists(self, subject_count, max_files):
+        all_subject_motions = []
+        subject_number = 35
+
+        while subject_count > 0:
+
+            current_subject_frame_list = []
+            files = listdir(f'data/{subject_number}')
+
+            for file_name in files[1:]:
+
+                frame = parse_amc(f'data/{subject_number}/{file_name}')
+                current_subject_frame_list.append(frame)
+
+                max_files -= 1
+                if max_files == 0:
+                    break
+                
+            subject_count -= 1
+            all_subject_motions.append(current_subject_frame_list)
+        return all_subject_motions
 
 
 # Reconstruction + KL divergence losses summed over all elements and batch
 def loss_function(recon_x, x, mu, logvar):
-    BCE = F.binary_cross_entropy(recon_x, x.view(-1, 784), reduction='sum')
+    # BCE_function = nn.BCEWithLogitsLoss()
+    # BCE = BCE_function(recon_x, x)
+    recon_x = F.sigmoid(recon_x)
+    recon_loss = F.mse_loss(recon_x, x)
 
     # see Appendix B from VAE paper:
     # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
@@ -38,29 +84,34 @@ def loss_function(recon_x, x, mu, logvar):
     # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
     KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
-    return BCE + KLD
+    return recon_loss + 0.2*KLD
 
 
-def train(epoch):
+def train(epoch, model, train_loader, optimizer):
+    losses = []
     model.train()
     train_loss = 0
-    for batch_idx, (data, _) in enumerate(train_loader):
-        data = data.to(device)
+    for (index, data) in enumerate(train_loader):
+        previous_frame, current_frame = torch.flatten(data[0]).to(device), torch.flatten(data[1]).to(device)
+
+        previous_frame = (previous_frame - previous_frame.mean()) / sqrt(previous_frame.var())
+        current_frame = (current_frame - current_frame.mean()) / sqrt(current_frame.var())
+
         optimizer.zero_grad()
-        recon_batch, mu, logvar = model(data)
-        loss = loss_function(recon_batch, data, mu, logvar)
+        reconstructed_next_frame, mu, logvar = model(previous_frame, current_frame)
+
+        loss = loss_function(reconstructed_next_frame, current_frame, mu, logvar)
         loss.backward()
+
         train_loss += loss.item()
+        losses.append(loss.item())
         optimizer.step()
-        if batch_idx % log_interval == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader),
-                loss.item() / len(data)))
-
-    print('====> Epoch: {} Average loss: {:.4f}'.format(
-          epoch, train_loss / len(train_loader.dataset)))
-
+        logger.info(f'Iteration {index+1} of {len(train_loader.dataset)} | Loss: {loss.item()}')
+    
+    plt.plot(losses)
+    plt.ylabel('Loss')
+    plt.xlabel('Iteration No.')
+    plt.savefig("Fig.png", dpi=500)
 
 def test(epoch):
     model.eval()
@@ -73,19 +124,28 @@ def test(epoch):
             if i == 0:
                 n = min(data.size(0), 8)
                 comparison = torch.cat([data[:n],
-                                      recon_batch.view(batch_size, 1, 28, 28)[:n]])
+                                        recon_batch.view(batch_size, 1, 28, 28)[:n]])
                 save_image(comparison.cpu(),
-                         'results/reconstruction_' + str(epoch) + '.png', nrow=n)
+                           'results/reconstruction_' + str(epoch) + '.png', nrow=n)
 
     test_loss /= len(test_loader.dataset)
-    print('====> Test set loss: {:.4f}'.format(test_loss))
+    logger.info('====> Test set loss: {:.4f}'.format(test_loss))
+
 
 if __name__ == "__main__":
-    for epoch in range(1, epochs + 1):
-        train(epoch)
-        test(epoch)
-        with torch.no_grad():
-            sample = torch.randn(64, 20).to(device)
-            sample = model.decode(sample).cpu()
-            save_image(sample.view(64, 1, 28, 28),
-                       'results/sample_' + str(epoch) + '.png')
+    logger.info("Initializing Dataset...")
+    dataset = MotionFramesDataset(subject_count=1, max_files_per_subject=34)
+    logger.info("Done.\n")
+
+    logger.info("Loading Training Data...")
+    train_loader = DataLoader(dataset, batch_size=1, num_workers=2, shuffle=True)
+    logger.info("Done.\n")
+
+    logger.info("Initializing Network and Optimizer...")
+    model = MVAE().to(device)
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    logger.info("Done.\n")
+
+
+    train(0, model, train_loader, optimizer)
+   

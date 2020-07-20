@@ -2,45 +2,6 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-
-class Expert(nn.Module):
-    def __init__(self):
-        super(Expert, self).__init__()
-
-        self.input_layer = nn.Linear(32 + 62, 256) # z is of size 32
-        self.layer_1 = nn.Linear(32 + 256, 256)
-        self.layer_2 = nn.Linear(32 + 256, 256)
-        self.layer_3 = nn.Linear(32 + 256, 62)
-
-    def forward(self, z, prev_pose):
-        inp = torch.cat((z, prev_pose), 0)
-
-        x = torch.cat((z, F.elu(self.input_layer(inp))), 0)
-        x = torch.cat((z, F.elu(self.layer_1(x))), 0)
-        x = torch.cat((z, F.elu(self.layer_2(x))), 0)
-
-        return self.layer_3(x)
-
-
-class GatingNetwork(nn.Module):
-    def __init__(self):
-        super(GatingNetwork, self).__init__()
-
-        self.input_layer = nn.Linear(32 + 62, 256)
-        self.layer_1 = nn.Linear(256, 256)
-        self.layer_2 = nn.Linear(256, 256)
-        self.layer_3 = nn.Linear(256, 6)
-
-    def forward(self, z, prev_pose):
-        inp = torch.cat((z, prev_pose), 0)
-
-        x = F.elu(self.input_layer(inp))
-        x = F.elu(self.layer_1(x))
-        x = F.elu(self.layer_2(x))
-
-        return self.layer_3(x)
-
-
 class MVAE(nn.Module):
     def __init__(self):
         super(MVAE, self).__init__()
@@ -93,11 +54,38 @@ class MVAE(nn.Module):
         return self.decode(z, prev_pose), mu, logvar
 
 
-# thing = GatingNetwork()
-# print(thing(torch.tensor([0.5]), torch.rand(28)))
+class GatingNetwork(nn.Module):
+    def __init__(self):
+        super(GatingNetwork, self).__init__()
 
-# thing = Expert()
-# print(thing(torch.tensor([0.5]), torch.rand(28)))
+        self.input_layer = nn.Linear(32 + 62, 256)
+        self.layer_1 = nn.Linear(256, 256)
+        self.layer_2 = nn.Linear(256, 256)
+        self.layer_3 = nn.Linear(256, 6)
 
-thing = MVAE()
-thing(torch.rand(28), torch.rand(28))
+    def forward(self, z, prev_pose):
+        inp = torch.cat((z, prev_pose), 0)
+
+        x = F.elu(self.input_layer(inp))
+        x = F.elu(self.layer_1(x))
+        x = F.elu(self.layer_2(x))
+
+        return self.layer_3(x)
+
+class Expert(nn.Module):
+    def __init__(self):
+        super(Expert, self).__init__()
+
+        self.input_layer = nn.Linear(32 + 62, 256) # z is of size 32
+        self.layer_1 = nn.Linear(32 + 256, 256)
+        self.layer_2 = nn.Linear(32 + 256, 256)
+        self.layer_3 = nn.Linear(32 + 256, 62)
+
+    def forward(self, z, prev_pose):
+        inp = torch.cat((z, prev_pose), 0)
+
+        x = torch.cat((z, F.elu(self.input_layer(inp))), 0)
+        x = torch.cat((z, F.elu(self.layer_1(x))), 0)
+        x = torch.cat((z, F.elu(self.layer_2(x))), 0)
+
+        return self.layer_3(x)
